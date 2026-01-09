@@ -14,6 +14,7 @@ BAUD = 9600
 TIMEOUT_S = 1.0
 
 MAX_HISTORY = 20
+DEBUG_MODE = True  # 디버그 모드 (반응 속도 측정)
 
 # --------------------------------------------------
 # HTTP 세션 (연결 풀링)
@@ -100,6 +101,11 @@ SYSTEM_PROMPT = """당신은 상대방 말에 무조건 공감해주는 공감�
 # Ollama 호출
 # --------------------------------------------------
 def ollama_parse_intent(user_text: str, conversation_history: list) -> dict:
+    start_time = time.time()
+    request_start = None
+    request_end = None
+    parse_start = None
+    
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT}
     ]
@@ -122,29 +128,47 @@ def ollama_parse_intent(user_text: str, conversation_history: list) -> dict:
     }
 
     try:
+        request_start = time.time()
         r = SESSION.post(OLLAMA_URL, json=payload, timeout=30)
+        request_end = time.time()
         r.raise_for_status()
         response_json = r.json()
         content = response_json["message"]["content"]
     except Exception as e:
-        print(f"[ERROR] Ollama 요청 실패: {e}")
+        if DEBUG_MODE:
+            print(f"[DEBUG] Ollama 요청 실패: {e} (소요 시간: {time.time() - start_time:.3f}s)")
+        else:
+            print(f"[ERROR] Ollama 요청 실패: {e}")
         return {
             "emotion": "soso",
             "reply": "음… 잠깐 연결이 헷갈렸지만 네 말에 공감하고 있어"
         }
 
     if not content or content.strip() in ("", "{}"):
+        if DEBUG_MODE:
+            print(f"[DEBUG] 빈 응답 (소요 시간: {time.time() - start_time:.3f}s)")
         return {
             "emotion": "soso",
             "reply": "음… 잠깐 생각이 꼬였나 봐도 네 말엔 공감해"
         }
 
     try:
+        parse_start = time.time()
         parsed = json.loads(content)
+        parse_end = time.time()
         if "emotion" not in parsed or "reply" not in parsed:
             raise ValueError("필수 필드 없음")
+        
+        if DEBUG_MODE:
+            total_time = time.time() - start_time
+            request_time = request_end - request_start if request_start and request_end else 0
+            parse_time = parse_end - parse_start if parse_start else 0
+            print(f"[DEBUG] 응답 시간: 전체={total_time:.3f}s, API요청={request_time:.3f}s, 파싱={parse_time:.3f}s")
+        
         return parsed
     except Exception as e:
+        if DEBUG_MODE:
+            print(f"[DEBUG] JSON 파싱 실패: {e} (소요 시간: {time.time() - start_time:.3f}s)")
         return {
             "emotion": "soso",
             "reply": "조금 헷갈렸지만 네 감정은 느껴지고 있어"
@@ -180,9 +204,14 @@ def open_serial():
     return ser
 
 def arduino_cmd(ser, cmd: str) -> str:
+    start_time = time.time()
     ser.write((cmd.strip() + "\n").encode("utf-8"))
     ser.flush()
-    return ser.readline().decode("utf-8", errors="ignore").strip()
+    result = ser.readline().decode("utf-8", errors="ignore").strip()
+    if DEBUG_MODE:
+        elapsed = time.time() - start_time
+        print(f"[DEBUG] Arduino 전송 시간: {elapsed:.3f}s")
+    return result
 
 # --------------------------------------------------
 # Main Loop
@@ -204,6 +233,9 @@ def main():
             print("Exiting...")
             break
 
+        # 전체 처리 시간 측정 시작
+        total_start = time.time()
+        
         emotion_obj = ollama_parse_intent(
             user,
             conversation_history
@@ -213,6 +245,7 @@ def main():
         reply = emotion_obj["reply"]
 
         # 🔥 히스토리는 JSON 원본으로 저장
+        history_start = time.time()
         conversation_history.append({
             "role": "user",
             "content": user
@@ -224,9 +257,13 @@ def main():
 
         if len(conversation_history) > MAX_HISTORY:
             conversation_history = conversation_history[-MAX_HISTORY:]
+        history_time = time.time() - history_start
 
         # Arduino 전송
         arduino_cmd(ser, emotion.upper())
+
+        # 전체 처리 시간 계산
+        total_time = time.time() - total_start
 
         emoji = {
             "happy": "😊",
@@ -236,6 +273,9 @@ def main():
         }.get(emotion, "😐")
 
         print(f"Bot> {emoji} {reply}")
+        
+        if DEBUG_MODE:
+            print(f"[DEBUG] 전체 처리 시간: {total_time:.3f}s (히스토리 저장: {history_time:.3f}s)")
 
 if __name__ == "__main__":
     main()
