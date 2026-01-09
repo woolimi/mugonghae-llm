@@ -41,6 +41,11 @@ void displayEmotion(String emotion) {
     lcd.print("Emotion: Soso");
     lcd.setCursor(0, 1);
     lcd.print("(-_-)");
+  } else if (emotion == "ANGRY") {
+    lcd.setCursor(0, 0);
+    lcd.print("Emotion: Angry");
+    lcd.setCursor(0, 1);
+    lcd.print("(>o<)");
   } else {
     // 알 수 없는 명령
     lcd.setCursor(0, 0);
