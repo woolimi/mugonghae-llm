@@ -1,6 +1,4 @@
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 import json
 import time
 import serial
@@ -14,25 +12,8 @@ BAUD = 9600
 TIMEOUT_S = 1.0
 
 MAX_HISTORY = 20
-DEBUG_MODE = True  # 디버그 모드 (반응 속도 측정)
+DEBUG_MODE = False  # 디버그 모드 (반응 속도 측정)
 
-# --------------------------------------------------
-# HTTP 세션 (연결 풀링)
-# --------------------------------------------------
-def create_session():
-    """재사용 가능한 HTTP 세션 생성 (연결 풀링)"""
-    session = requests.Session()
-    retry_strategy = Retry(
-        total=3,
-        backoff_factor=0.3,
-        status_forcelist=[429, 500, 502, 503, 504]
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
-
-SESSION = create_session()
 # --------------------------------------------------
 # 예시 파일 로드
 # --------------------------------------------------
@@ -121,7 +102,6 @@ def ollama_parse_intent(user_text: str, conversation_history: list) -> dict:
         "messages": messages,
         "stream": False,
         "format": "json",          # 🔥 항상 JSON 강제
-        "keep_alive": "30m",       # 🔥 모델을 30분간 메모리에 유지
         "options": {
             "temperature": 0.0
         }
@@ -129,7 +109,7 @@ def ollama_parse_intent(user_text: str, conversation_history: list) -> dict:
 
     try:
         request_start = time.time()
-        r = SESSION.post(OLLAMA_URL, json=payload, timeout=30)
+        r = requests.post(OLLAMA_URL, json=payload, timeout=30)
         request_end = time.time()
         r.raise_for_status()
         response_json = r.json()
@@ -175,25 +155,6 @@ def ollama_parse_intent(user_text: str, conversation_history: list) -> dict:
         }
 
 # --------------------------------------------------
-# 모델 워밍업
-# --------------------------------------------------
-def warmup_model():
-    """프로그램 시작 시 모델을 메모리에 미리 로드"""
-    print("[INFO] 모델 워밍업 중...")
-    dummy_payload = {
-        "model": MODEL,
-        "messages": [{"role": "user", "content": "test"}],
-        "stream": False,
-        "keep_alive": "30m"
-    }
-    try:
-        r = SESSION.post(OLLAMA_URL, json=dummy_payload, timeout=30)
-        r.raise_for_status()
-        print("[INFO] 모델 워밍업 완료")
-    except Exception as e:
-        print(f"[WARNING] 모델 워밍업 실패: {e} (첫 요청 시 로드됩니다)")
-
-# --------------------------------------------------
 # Serial
 # --------------------------------------------------
 def open_serial():
@@ -217,9 +178,6 @@ def arduino_cmd(ser, cmd: str) -> str:
 # Main Loop
 # --------------------------------------------------
 def main():
-    # 모델 워밍업 (Arduino 연결 전에 실행)
-    warmup_model()
-    
     ser = open_serial()
     print("Connected. Type 'quit' to exit.")
 
