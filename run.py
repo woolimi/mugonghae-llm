@@ -5,7 +5,7 @@ import serial
 import os
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "llama-3.2-Korean:latest"
+MODEL = "gemma3:4b"
 
 SERIAL_PORT = "/dev/ttyACM0"
 BAUD = 9600
@@ -63,7 +63,19 @@ def build_system_prompt():
     
     return base_prompt
 
-SYSTEM_PROMPT = build_system_prompt()
+SYSTEM_PROMPT = """당신은 상대방 말에 무조건 공감해주는 공감봇입니다.
+상대방의 상황과 감정을 판단해 함께 기뻐하고, 슬퍼하고, 화내며 공감합니다.
+친한 친구처럼 자연스럽고 올바른 한국어 문장으로 말하세요.
+
+중요 규칙:
+- 반드시 JSON 형식으로만 응답해야 합니다.
+
+출력 스키마:
+{
+  "emotion": "happy" | "sad" | "angry" | "soso",
+  "reply": "사용자에게 보여줄 한글 한 문장"
+}
+"""
 
 # --------------------------------------------------
 # Ollama 호출
